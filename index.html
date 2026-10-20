@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard Cafe Gunung Sawo</title>
+<script src="chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+    background: linear-gradient(160deg, #0f1b12 0%, #1a2e1e 55%, #10210f 100%);
+    color: #eef5ec;
+    padding: 28px 34px 40px;
+    min-width: 1180px;
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 22px;
+    border-bottom: 1px solid rgba(255,255,255,0.12);
+    padding-bottom: 16px;
+  }
+  .header h1 { margin: 0; font-size: 26px; color: #fff; letter-spacing: .3px; }
+  .header .sub { color: #a9c2a6; font-size: 13.5px; margin-top: 6px; }
+  .header .right { text-align: right; }
+  .badge {
+    background: rgba(76,175,80,0.18); color: #8fe397; border: 1px solid rgba(143,227,151,0.35);
+    padding: 7px 14px; border-radius: 20px; font-size: 12.5px; font-weight: 600; white-space: nowrap;
+    display: inline-block;
+  }
+  .refresh-btn {
+    margin-left: 10px; background: rgba(106,180,255,0.18); color: #a9d4ff; border: 1px solid rgba(169,212,255,0.35);
+    padding: 7px 14px; border-radius: 20px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  }
+  .refresh-btn:hover { background: rgba(106,180,255,0.3); }
+  .last-sync { color: #7c9678; font-size: 11px; margin-top: 8px; }
+  .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 22px; }
+  .kpi {
+    background: rgba(255,255,255,0.055);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 14px;
+    padding: 16px 16px 14px;
+  }
+  .kpi .label { font-size: 11.5px; color: #9fb79c; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 8px; }
+  .kpi .value { font-size: 21px; font-weight: 700; color: #fff; }
+  .kpi .value.green { color: #7be38a; }
+  .kpi .note { font-size: 11px; color: #83a07e; margin-top: 5px; }
+  .grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .card {
+    background: rgba(255,255,255,0.045);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 14px;
+    padding: 18px 20px;
+  }
+  .card h3 { margin: 0 0 12px; font-size: 14.5px; color: #dfeedc; font-weight: 600; }
+  .card .chart-wrap { height: 230px; position: relative; }
+  .mini-stat { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px dashed rgba(255,255,255,0.08); font-size: 13px; }
+  .mini-stat:last-child { border-bottom: none; }
+  .mini-stat .k { color: #a9c2a6; }
+  .mini-stat .v { font-weight: 600; color: #fff; }
+  .footer-note { margin-top: 18px; font-size: 11.5px; color: #7c9678; text-align: right; }
+  #status { font-size: 12.5px; color: #e3b24a; margin-bottom: 14px; display: none; }
+  #errorBox { font-size: 12.5px; color: #ff9b8a; margin-bottom: 14px; display: none; background: rgba(255,100,80,0.08); border: 1px solid rgba(255,100,80,0.25); border-radius: 10px; padding: 10px 14px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>☕ Dashboard Keuangan — Cafe Gunung Sawo</h1>
+    <div class="sub">Sumber: Google Sheet "Pax Catering PT TPE (Responses)" · Periode <span id="periodLabel">memuat...</span></div>
+  </div>
+  <div class="right">
+    <span class="badge" id="ndaysBadge">memuat...</span>
+    <button class="refresh-btn" onclick="loadDashboard()">⟳ Refresh</button>
+    <div class="last-sync" id="lastSync"></div>
+  </div>
+</div>
+
+<div id="status">⏳ Mengambil data terbaru dari Google Sheet...</div>
+<div id="errorBox"></div>
+
+<div class="kpis">
+  <div class="kpi">
+    <div class="label">Total Pendapatan</div>
+    <div class="value" id="kpiPendapatan">-</div>
+    <div class="note">dari PT TPE (Rp 9.600/box)</div>
+  </div>
+  <div class="kpi">
+    <div class="label">Total Biaya (Mami Rini)</div>
+    <div class="value" id="kpiCost">-</div>
+    <div class="note">bahan + produksi + bensin</div>
+  </div>
+  <div class="kpi">
+    <div class="label">Total Keuntungan</div>
+    <div class="value green" id="kpiKeuntungan">-</div>
+    <div class="note" id="kpiMarginNote">margin -</div>
+  </div>
+  <div class="kpi">
+    <div class="label">Total Pax</div>
+    <div class="value" id="kpiPax">-</div>
+    <div class="note" id="kpiAvgPaxNote">rata² -/hari</div>
+  </div>
+  <div class="kpi">
+    <div class="label">Rata-rata Profit/Hari</div>
+    <div class="value green" id="kpiAvgProfit">-</div>
+    <div class="note" id="kpiBestNote">tertinggi -</div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h3>Tren Pendapatan vs Biaya vs Keuntungan</h3>
+    <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+  </div>
+  <div class="card">
+    <h3>Komposisi Total (Pendapatan)</h3>
+    <div class="chart-wrap"><canvas id="pieChart"></canvas></div>
+  </div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1fr 1fr;">
+  <div class="card">
+    <h3>Jumlah Pax per Hari</h3>
+    <div class="chart-wrap"><canvas id="paxChart"></canvas></div>
+  </div>
+  <div class="card">
+    <h3>Ringkasan</h3>
+    <div class="mini-stat"><span class="k">Periode data</span><span class="v" id="sumPeriod">-</span></div>
+    <div class="mini-stat"><span class="k">Hari terbaik (profit)</span><span class="v" id="sumBest">-</span></div>
+    <div class="mini-stat"><span class="k">Hari terendah (profit)</span><span class="v" id="sumWorst">-</span></div>
+    <div class="mini-stat"><span class="k">Rata-rata pax/hari</span><span class="v" id="sumAvgPax">-</span></div>
+    <div class="mini-stat"><span class="k">Margin keuntungan</span><span class="v" id="sumMargin">-</span></div>
+    <div class="mini-stat"><span class="k">Harga jual / box</span><span class="v">Rp 9.600</span></div>
+  </div>
+</div>
+
+<div class="footer-note">Data diambil langsung (live) dari Google Sheet setiap dashboard dibuka · Catering Gunung Sawo (PT TPE)</div>
+
+<script>
+const SHEET_ID = "19rkb9hZKHySTMWw7-sBTgP4Y37e_MUGxB5JYLow4bDA";
+const SHEET_GID = "1124261543";
+const CACHE_KEY = "gunungsawo_dashboard_cache_v1";
+
+const fmt = (n) => new Intl.NumberFormat('id-ID').format(Math.round(n));
+const idrTick = (v) => 'Rp ' + fmt(v);
+const MONTH_SHORT_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+
+function parseGvizDate(v) {
+  // v like "Date(2026,7,24)" or "Date(2026,7,24,20,30,30)"
+  if (!v) return null;
+  const m = /Date\((\d+),(\d+),(\d+)(?:,(\d+),(\d+),(\d+))?\)/.exec(v);
+  if (!m) return null;
+  const [, y, mo, d, h, mi, s] = m.map(Number);
+  return new Date(y, mo, d, h || 0, mi || 0, s || 0);
+}
+
+function dateKey(d) { return d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate(); }
+function fmtDayLabel(d) { return String(d.getDate()).padStart(2,'0') + ' ' + MONTH_SHORT_ID[d.getMonth()]; }
+
+function fetchSheetJSONP() {
+  return new Promise((resolve, reject) => {
+    const cbName = '__gvizCB_' + Date.now();
+    const timeout = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, 12000);
+    function cleanup() {
+      clearTimeout(timeout);
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
+    window[cbName] = (data) => { cleanup(); resolve(data); };
+    const script = document.createElement('script');
+    script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?gid=${SHEET_GID}&tqx=out:json;responseHandler:${cbName}`;
+    script.onerror = () => { cleanup(); reject(new Error('script load error (cek koneksi internet)')); };
+    document.body.appendChild(script);
+  });
+}
+
+function processRows(gvizData) {
+  const rawRows = gvizData.table.rows;
+  const rows = [];
+  for (const r of rawRows) {
+    const c = r.c;
+    if (!c || !c[1] || !c[1].v) continue; // Tanggal kosong
+    const date = parseGvizDate(c[1].v);
+    if (!date) continue;
+    const jumlahPax = c[3] ? Number(c[3].v) : 0;
+    if (!jumlahPax) continue;
+    const ts = (c[0] && c[0].v) ? parseGvizDate(c[0].v) : null;
+    rows.push({
+      date,
+      key: dateKey(date),
+      jumlah_pax: jumlahPax,
+      bensin: c[5] ? Number(c[5].v) : 0,
+      jumlah_order: c[6] ? Number(c[6].v) : 0,
+      mami_rini: c[7] ? Number(c[7].v) : 0,
+      pendapatan: c[8] ? Number(c[8].v) : 0,
+      keuntungan: c[9] ? Number(c[9].v) : 0,
+      ts,
+    });
+  }
+  // dedupe by date key: later timestamp wins; if either ts missing, later-in-sheet wins
+  const byDate = new Map();
+  for (const r of rows) {
+    const prev = byDate.get(r.key);
+    if (!prev) { byDate.set(r.key, r); continue; }
+    if (!r.ts || !prev.ts || r.ts >= prev.ts) byDate.set(r.key, r);
+  }
+  return Array.from(byDate.values()).sort((a,b) => a.date - b.date);
+}
+
+let charts = {};
+function destroyCharts() { Object.values(charts).forEach(ch => ch.destroy()); charts = {}; }
+
+function render(finalRows) {
+  const labels = finalRows.map(r => fmtDayLabel(r.date));
+  const pendapatan = finalRows.map(r => r.pendapatan);
+  const keuntungan = finalRows.map(r => r.keuntungan);
+  const pax = finalRows.map(r => r.jumlah_pax);
+  const cost = finalRows.map(r => r.mami_rini);
+
+  const totalPendapatan = pendapatan.reduce((a,b)=>a+b,0);
+  const totalKeuntungan = keuntungan.reduce((a,b)=>a+b,0);
+  const totalCost = cost.reduce((a,b)=>a+b,0);
+  const totalPax = pax.reduce((a,b)=>a+b,0);
+  const nDays = finalRows.length;
+  const avgMargin = totalPendapatan ? (totalKeuntungan/totalPendapatan*100) : 0;
+  const avgProfitDay = nDays ? totalKeuntungan/nDays : 0;
+  const avgPax = nDays ? Math.round(totalPax/nDays) : 0;
+  let best = finalRows[0], worst = finalRows[0];
+  for (const r of finalRows) { if (r.keuntungan > best.keuntungan) best = r; if (r.keuntungan < worst.keuntungan) worst = r; }
+
+  const period = nDays ? `${fmtDayLabel(finalRows[0].date)} - ${fmtDayLabel(finalRows[nDays-1].date)} ${finalRows[nDays-1].date.getFullYear()}` : '-';
+
+  document.getElementById('periodLabel').textContent = period;
+  document.getElementById('ndaysBadge').textContent = `${nDays} hari operasi tercatat`;
+  document.getElementById('kpiPendapatan').textContent = 'Rp ' + fmt(totalPendapatan);
+  document.getElementById('kpiCost').textContent = 'Rp ' + fmt(totalCost);
+  document.getElementById('kpiKeuntungan').textContent = 'Rp ' + fmt(totalKeuntungan);
+  document.getElementById('kpiMarginNote').textContent = `margin ${avgMargin.toFixed(1)}%`;
+  document.getElementById('kpiPax').textContent = fmt(totalPax);
+  document.getElementById('kpiAvgPaxNote').textContent = `rata² ${avgPax}/hari`;
+  document.getElementById('kpiAvgProfit').textContent = 'Rp ' + fmt(avgProfitDay);
+  document.getElementById('kpiBestNote').textContent = `tertinggi ${fmtDayLabel(best.date)}`;
+  document.getElementById('sumPeriod').textContent = period;
+  document.getElementById('sumBest').textContent = `${fmtDayLabel(best.date)} (Rp ${fmt(best.keuntungan)})`;
+  document.getElementById('sumWorst').textContent = `${fmtDayLabel(worst.date)} (Rp ${fmt(worst.keuntungan)})`;
+  document.getElementById('sumAvgPax').textContent = `${avgPax} pax`;
+  document.getElementById('sumMargin').textContent = `${avgMargin.toFixed(1)}%`;
+
+  destroyCharts();
+  const gridColor = 'rgba(255,255,255,0.06)';
+  Chart.defaults.color = '#b9cdb6';
+  Chart.defaults.font.size = 11;
+
+  charts.trend = new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: { labels, datasets: [
+      { label: 'Pendapatan', data: pendapatan, borderColor: '#6ab4ff', backgroundColor: 'rgba(106,180,255,0.08)', tension: .3, fill: true, pointRadius: 0, borderWidth: 2 },
+      { label: 'Biaya', data: cost, borderColor: '#ff8a65', backgroundColor: 'rgba(255,138,101,0.05)', tension: .3, fill: true, pointRadius: 0, borderWidth: 2 },
+      { label: 'Keuntungan', data: keuntungan, borderColor: '#7be38a', backgroundColor: 'rgba(123,227,138,0.12)', tension: .3, fill: true, pointRadius: 0, borderWidth: 2.5 },
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'top', labels: { boxWidth: 12 } } },
+      scales: { x: { grid: { color: gridColor }, ticks: { maxTicksLimit: 10 } }, y: { grid: { color: gridColor }, ticks: { callback: idrTick } } } }
+  });
+
+  charts.pie = new Chart(document.getElementById('pieChart'), {
+    type: 'doughnut',
+    data: { labels: ['Biaya (Mami Rini)', 'Keuntungan'], datasets: [{ data: [totalCost, totalKeuntungan], backgroundColor: ['#ff8a65', '#7be38a'], borderColor: '#1a2e1e', borderWidth: 3 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+  });
+
+  charts.pax = new Chart(document.getElementById('paxChart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Pax', data: pax, backgroundColor: '#6ab4ff88', borderRadius: 3 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+      scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } }, y: { grid: { color: gridColor } } } }
+  });
+}
+
+function loadFromCache() {
+  const cached = localStorage.getItem(CACHE_KEY);
+  if (!cached) return null;
+  try {
+    const parsed = JSON.parse(cached);
+    const finalRows = parsed.rows.map(r => ({...r, date: new Date(r.date), ts: r.ts ? new Date(r.ts) : null}));
+    return { finalRows, savedAt: parsed.savedAt };
+  } catch (e) { return null; }
+}
+
+async function loadDashboard() {
+  const statusEl = document.getElementById('status');
+  const errEl = document.getElementById('errorBox');
+  errEl.style.display = 'none';
+
+  // 1) Tampilkan cache langsung (instan, tanpa nunggu network) kalau ada
+  const cache = loadFromCache();
+  if (cache) {
+    render(cache.finalRows);
+    document.getElementById('lastSync').textContent = 'Memuat data terbaru... (cache: ' + new Date(cache.savedAt).toLocaleString('id-ID') + ')';
+    statusEl.style.display = 'none';
+  } else {
+    statusEl.style.display = 'block';
+  }
+
+  // 2) Ambil data live di belakang, lalu re-render kalau berhasil
+  try {
+    const gvizData = await fetchSheetJSONP();
+    const finalRows = processRows(gvizData);
+    if (!finalRows.length) throw new Error('tidak ada baris data valid di sheet');
+    render(finalRows);
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ rows: finalRows.map(r => ({...r, date: r.date.toISOString(), ts: r.ts ? r.ts.toISOString() : null})), savedAt: new Date().toISOString() }));
+    document.getElementById('lastSync').textContent = 'Live · update terakhir: ' + new Date().toLocaleString('id-ID');
+  } catch (e) {
+    if (cache) {
+      document.getElementById('lastSync').textContent = 'Cache (gagal update live) · ' + new Date(cache.savedAt).toLocaleString('id-ID');
+    } else {
+      errEl.style.display = 'block';
+      errEl.textContent = '⚠ Gagal mengambil data dari Google Sheet (' + e.message + ') dan tidak ada cache tersedia.';
+    }
+  } finally {
+    statusEl.style.display = 'none';
+  }
+}
+
+loadDashboard();
+</script>
+</body>
+</html>
