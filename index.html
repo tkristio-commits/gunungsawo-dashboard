@@ -70,6 +70,33 @@
   #status { font-size: 12.5px; color: #e3b24a; margin-bottom: 14px; display: none; }
   #errorBox { font-size: 12.5px; color: #ff9b8a; margin-bottom: 14px; display: none; background: rgba(255,100,80,0.08); border: 1px solid rgba(255,100,80,0.25); border-radius: 10px; padding: 10px 14px; }
 
+  .filter-bar {
+    display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;
+    background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 14px; padding: 14px 16px; margin-bottom: 18px;
+  }
+  .filter-group { display: flex; flex-direction: column; gap: 5px; }
+  .filter-group label { font-size: 10.5px; color: #9fb79c; text-transform: uppercase; letter-spacing: .5px; }
+  .filter-group input[type=date] {
+    background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.15); color: #eef5ec;
+    border-radius: 8px; padding: 7px 9px; font-size: 13px; font-family: inherit; color-scheme: dark;
+  }
+  .filter-btn {
+    background: rgba(106,180,255,0.18); color: #a9d4ff; border: 1px solid rgba(169,212,255,0.35);
+    padding: 8px 14px; border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  }
+  .filter-btn:hover { background: rgba(106,180,255,0.3); }
+  .filter-btn.ghost { background: rgba(255,255,255,0.06); color: #cfe3cc; border-color: rgba(255,255,255,0.15); }
+  .filter-btn.ghost:hover { background: rgba(255,255,255,0.12); }
+  .filter-presets { display: flex; gap: 8px; flex-wrap: wrap; }
+  .filter-presets button {
+    background: rgba(123,227,138,0.12); color: #9fe3ac; border: 1px solid rgba(123,227,138,0.3);
+    padding: 7px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .filter-presets button:hover { background: rgba(123,227,138,0.22); }
+  .filter-presets button.active { background: rgba(123,227,138,0.35); color: #fff; }
+  .filter-status { font-size: 11.5px; color: #83a07e; margin-left: auto; align-self: center; }
+
   /* ---- Tablet ---- */
   @media (max-width: 900px) {
     body { padding: 18px 16px 28px; }
@@ -98,6 +125,9 @@
     .card .chart-wrap { height: 200px; }
     .mini-stat { font-size: 12px; padding: 7px 0; }
     .footer-note { font-size: 10.5px; }
+    .filter-bar { padding: 12px; gap: 10px; }
+    .filter-group input[type=date] { font-size: 12px; padding: 6px 8px; width: 132px; }
+    .filter-status { margin-left: 0; width: 100%; }
   }
 
   @media (max-width: 380px) {
@@ -122,6 +152,24 @@
 
 <div id="status">⏳ Mengambil data terbaru dari Google Sheet...</div>
 <div id="errorBox"></div>
+
+<div class="filter-bar">
+  <div class="filter-group">
+    <label>Dari tanggal</label>
+    <input type="date" id="dateFrom">
+  </div>
+  <div class="filter-group">
+    <label>Sampai tanggal</label>
+    <input type="date" id="dateTo">
+  </div>
+  <button class="filter-btn" onclick="applyDateFilter()">Terapkan</button>
+  <button class="filter-btn ghost" onclick="resetDateFilter()">Semua</button>
+  <div class="filter-presets">
+    <button onclick="presetFilter(7)">7 hari terakhir</button>
+    <button onclick="presetFilter(30)">30 hari terakhir</button>
+  </div>
+  <div class="filter-status" id="filterStatus"></div>
+</div>
 
 <div class="kpis">
   <div class="kpi">
@@ -200,6 +248,8 @@ function parseGvizDate(v) {
 
 function dateKey(d) { return d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate(); }
 function fmtDayLabel(d) { return String(d.getDate()).padStart(2,'0') + ' ' + MONTH_SHORT_ID[d.getMonth()]; }
+function toISODate(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function parseISODate(s) { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); }
 
 function fetchSheetJSONP() {
   return new Promise((resolve, reject) => {
@@ -331,6 +381,74 @@ function loadFromCache() {
   } catch (e) { return null; }
 }
 
+let allRows = []; // dataset lengkap (tanpa filter), diisi setiap kali data baru masuk (cache atau live)
+
+function setDateInputBounds(rows) {
+  if (!rows.length) return;
+  const fromEl = document.getElementById('dateFrom');
+  const toEl = document.getElementById('dateTo');
+  const minD = toISODate(rows[0].date);
+  const maxD = toISODate(rows[rows.length - 1].date);
+  fromEl.min = minD; fromEl.max = maxD;
+  toEl.min = minD; toEl.max = maxD;
+}
+
+function getFilteredRows() {
+  const fromVal = document.getElementById('dateFrom').value;
+  const toVal = document.getElementById('dateTo').value;
+  if (!fromVal && !toVal) return allRows;
+  const fromD = fromVal ? parseISODate(fromVal) : null;
+  const toD = toVal ? parseISODate(toVal) : null;
+  return allRows.filter(r => {
+    if (fromD && r.date < fromD) return false;
+    if (toD && r.date > toD) return false;
+    return true;
+  });
+}
+
+function updateFilterStatus(filteredCount) {
+  const el = document.getElementById('filterStatus');
+  if (filteredCount === allRows.length) {
+    el.textContent = `Menampilkan semua data (${allRows.length} hari)`;
+  } else {
+    el.textContent = `Filter aktif: ${filteredCount} dari ${allRows.length} hari`;
+  }
+  document.querySelectorAll('.filter-presets button').forEach(b => b.classList.remove('active'));
+}
+
+function renderFiltered() {
+  const filtered = getFilteredRows();
+  if (!filtered.length) {
+    document.getElementById('filterStatus').textContent = 'Tidak ada data pada rentang tanggal ini';
+    return;
+  }
+  render(filtered);
+  updateFilterStatus(filtered.length);
+}
+
+function applyDateFilter() {
+  renderFiltered();
+}
+
+function resetDateFilter() {
+  document.getElementById('dateFrom').value = '';
+  document.getElementById('dateTo').value = '';
+  render(allRows);
+  updateFilterStatus(allRows.length);
+}
+
+function presetFilter(days) {
+  if (!allRows.length) return;
+  const lastDate = allRows[allRows.length - 1].date;
+  const fromDate = new Date(lastDate);
+  fromDate.setDate(fromDate.getDate() - (days - 1));
+  document.getElementById('dateFrom').value = toISODate(fromDate);
+  document.getElementById('dateTo').value = toISODate(lastDate);
+  renderFiltered();
+  const label = days === 7 ? '7 hari terakhir' : '30 hari terakhir';
+  Array.from(document.querySelectorAll('.filter-presets button')).find(b => b.textContent === label)?.classList.add('active');
+}
+
 async function loadDashboard() {
   const statusEl = document.getElementById('status');
   const errEl = document.getElementById('errorBox');
@@ -339,7 +457,9 @@ async function loadDashboard() {
   // 1) Tampilkan cache langsung (instan, tanpa nunggu network) kalau ada
   const cache = loadFromCache();
   if (cache) {
-    render(cache.finalRows);
+    allRows = cache.finalRows;
+    setDateInputBounds(allRows);
+    renderFiltered();
     document.getElementById('lastSync').textContent = 'Memuat data terbaru... (cache: ' + new Date(cache.savedAt).toLocaleString('id-ID') + ')';
     statusEl.style.display = 'none';
   } else {
@@ -351,7 +471,9 @@ async function loadDashboard() {
     const gvizData = await fetchSheetJSONP();
     const finalRows = processRows(gvizData);
     if (!finalRows.length) throw new Error('tidak ada baris data valid di sheet');
-    render(finalRows);
+    allRows = finalRows;
+    setDateInputBounds(allRows);
+    renderFiltered();
     localStorage.setItem(CACHE_KEY, JSON.stringify({ rows: finalRows.map(r => ({...r, date: r.date.toISOString(), ts: r.ts ? r.ts.toISOString() : null})), savedAt: new Date().toISOString() }));
     document.getElementById('lastSync').textContent = 'Live · update terakhir: ' + new Date().toLocaleString('id-ID');
   } catch (e) {
